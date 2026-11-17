@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RealSense × LingBot · 实时深度</title>
+  <style>
+    :root { color-scheme: light; --ink:#16314a; --muted:#657587; --line:#dce4eb; --paper:#fff; --soft:#f4f7f9; --teal:#087e79; --warn:#9b5520; --error:#ac3838; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:"Avenir Next","PingFang SC","Microsoft YaHei",sans-serif; font-size:14px; line-height:1.55; }
+    button { font:inherit; }
+    .workspace { width:min(1680px,100%); padding:38px 40px 26px; margin:auto; }
+    header { display:flex; justify-content:space-between; gap:28px; align-items:center; padding-bottom:25px; }
+    .identity { display:flex; gap:14px; align-items:center; }
+    .camera-mark { flex:none; width:42px; height:42px; color:var(--ink); }
+    h1 { margin:0; font-size:26px; font-weight:650; letter-spacing:-.7px; line-height:1.3; }
+    .subtitle { margin:6px 0 0; color:var(--muted); font-size:13px; }
+    .connection { display:flex; gap:19px; align-items:center; justify-content:flex-end; flex-wrap:wrap; font-size:13px; }
+    .signal { display:inline-flex; align-items:center; gap:7px; white-space:nowrap; }
+    .dot { width:7px; height:7px; border-radius:50%; background:#8b99a6; }
+    .signal.good { color:var(--teal); }
+    .signal.good .dot { background:var(--teal); }
+    .signal.error { color:var(--error); }
+    .signal.error .dot { background:var(--error); }
+    .instrument-bar { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px 28px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:14px 0; }
+    .device { display:flex; align-items:center; gap:9px; min-width:0; }
+    .device strong { font-size:13px; font-weight:600; }
+    .device span { color:var(--muted); font-size:12px; }
+    .metrics { display:flex; align-items:center; gap:25px; flex-wrap:wrap; }
+    .metric { display:flex; gap:8px; align-items:baseline; color:var(--muted); font-size:12px; }
+    .metric output { color:var(--ink); font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
+    .mode-control { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+    .mode-control select { font:inherit; color:var(--ink); border:1px solid var(--line); border-radius:4px; background:var(--paper); padding:5px 25px 5px 9px; min-width:105px; cursor:pointer; }
+    .mode-control select:focus-visible { outline:2px solid var(--teal); outline-offset:2px; }
+    .mode-control select:disabled { cursor:wait; opacity:.6; }
+    .mode-help { margin:9px 0 0; display:flex; justify-content:space-between; gap:10px 24px; flex-wrap:wrap; color:var(--muted); font-size:11px; }
+    .mode-message { color:var(--teal); }
+    .mode-message.error { color:var(--error); }
+    .notice { margin:17px 0 0; padding:11px 14px; border-left:3px solid #bdc9d3; background:var(--soft); font-size:13px; color:#4a5f72; overflow-wrap:anywhere; }
+    .notice.error { border-left-color:var(--error); color:#843a35; background:#fff5f3; }
+    .notice[hidden] { display:none; }
+    .streams { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:19px; margin-top:29px; }
+    .stream { min-width:0; margin:0; }
+    .stream-heading { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:10px; }
+    h2 { margin:0; font-size:16px; font-weight:600; }
+    .stream-kind { color:var(--muted); font-size:11px; white-space:nowrap; }
+    .image-stage { position:relative; aspect-ratio:4/3; background:#000; color:#fff; overflow:hidden; cursor:crosshair; outline:none; border-radius:3px; }
+    .image-stage:focus-visible { outline:3px solid var(--teal); outline-offset:4px; }
+    .image-stage img { display:block; width:100%; height:100%; object-fit:contain; visibility:hidden; }
+    .image-stage.has-frame img { visibility:visible; }
+    .placeholder { position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:25px; text-align:center; pointer-events:none; }
+    .placeholder svg { width:34px; height:34px; color:#74818c; margin-bottom:15px; }
+    .placeholder strong { color:#d1d9df; font-size:13px; font-weight:500; }
+    .placeholder span { color:#8995a0; font-size:12px; margin-top:7px; max-width:27em; line-height:1.7; }
+    .has-frame .placeholder { display:none; }
+    .frame-tag { position:absolute; left:10px; top:10px; color:#e6edf2; background:rgba(0,0,0,.62); font-size:10px; padding:3px 7px; border-radius:2px; pointer-events:none; }
+    .frame-fps { position:absolute; right:10px; top:10px; color:#fff; background:rgba(0,0,0,.72); padding:4px 8px; border-radius:3px; font-size:12px; font-weight:600; font-variant-numeric:tabular-nums; line-height:1.4; pointer-events:none; }
+    .crosshair { display:none; position:absolute; width:23px; height:23px; transform:translate(-50%,-50%); pointer-events:none; filter:drop-shadow(0 1px 2px #000); }
+    .has-frame .crosshair.visible { display:block; }
+    .crosshair:before,.crosshair:after { content:""; position:absolute; background:#fff; }
+    .crosshair:before { width:23px; height:1px; left:0; top:11px; }
+    .crosshair:after { width:1px; height:23px; left:11px; top:0; }
+    figcaption { display:flex; justify-content:space-between; gap:10px; color:var(--muted); font-size:11px; margin-top:9px; min-height:19px; }
+    .frame-age { font-variant-numeric:tabular-nums; text-align:right; white-space:pre-line; }
+    .legend-row { display:flex; justify-content:space-between; align-items:center; gap:30px; margin-top:27px; padding-bottom:25px; border-bottom:1px solid var(--line); }
+    .async-note { color:var(--muted); font-size:12px; margin:0; max-width:62em; }
+    .async-note strong { color:var(--ink); font-weight:500; }
+    .scale { flex:none; width:245px; }
+    .scale-label { display:flex; justify-content:space-between; color:var(--muted); font-size:10px; margin-top:5px; }
+    .color-scale { height:6px; border-radius:2px; background:linear-gradient(90deg,#30123b,#4662d7,#36aaf9,#1ae4b6,#a4fc3c,#f9ba38,#e3440a,#7a0403); }
+    .measure { display:grid; grid-template-columns:minmax(240px,1fr) auto auto; align-items:center; gap:28px 42px; padding:25px 0; }
+    h3 { font-size:14px; margin:0 0 4px; font-weight:600; }
+    .measure-hint { margin:0; color:var(--muted); font-size:12px; }
+    .measurement { min-width:140px; }
+    .measurement-label { color:var(--muted); font-size:11px; margin-bottom:4px; }
+    .measurement output { font-size:27px; font-weight:500; letter-spacing:-.5px; font-variant-numeric:tabular-nums; line-height:1.2; }
+    .measurement.ai output { color:var(--teal); }
+    .measurement small { color:var(--muted); font-size:12px; margin-left:5px; }
+    .measure-message { grid-column:1/-1; color:var(--muted); font-size:12px; margin:-10px 0 0; min-height:19px; }
+    footer { display:flex; justify-content:space-between; gap:20px; border-top:1px solid var(--line); padding-top:16px; color:#7b8895; font-size:11px; }
+    .reset { border:0; padding:0; background:none; color:var(--teal); cursor:pointer; font-size:12px; white-space:nowrap; }
+    .reset:hover { text-decoration:underline; }
+    .reset:focus-visible { outline:2px solid var(--teal); outline-offset:5px; }
+    @media(min-width:1500px) { .workspace { padding-top:44px; } .streams { margin-top:36px; gap:24px; } }
+    @media(max-width:1000px) { .workspace { padding:28px 24px; } header { align-items:flex-start; } h1 { font-size:23px; } .connection { gap:8px; flex-direction:column; align-items:flex-end; } .streams { gap:13px; } h2 { font-size:14px; } .stream-kind { display:none; } .legend-row { gap:20px; } .scale { width:190px; } .measure { gap:24px; } }
+    @media(max-width:720px) { .workspace { padding:22px 18px; } header { gap:12px; } h1 { font-size:20px; letter-spacing:-.5px; } .camera-mark { display:none; } .subtitle { font-size:11px; } .connection { font-size:11px; } .device { flex-wrap:wrap; } .metrics { gap:18px; } .streams { grid-template-columns:1fr; gap:24px; margin-top:24px; } .stream-kind { display:block; } .image-stage { max-height:65vh; } .legend-row { align-items:flex-start; flex-direction:column-reverse; gap:15px; } .scale { width:100%; } .measure { grid-template-columns:1fr 1fr; gap:20px; } .measure-intro { grid-column:1/-1; } .measurement { min-width:0; } footer { flex-wrap:wrap; gap:8px; } }
+  </style>
+</head>
+<body>
+  <main class="workspace">
+    <header>
+      <div class="identity">
+        <svg class="camera-mark" viewBox="0 0 44 44" fill="none" aria-hidden="true"><rect x="3" y="12" width="38" height="20" rx="6" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="22" r="3.5" stroke="currentColor" stroke-width="1.7"/><circle cx="32" cy="22" r="3.5" stroke="currentColor" stroke-width="1.7"/><path d="M20 22h4M22 32v6M16 38h12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <div><h1>RealSense × LingBot</h1><p class="subtitle">实时深度工作台 · 蚂蚁灵波深度修复</p></div>
+      </div>
+      <div class="connection" aria-live="polite">
+        <span class="signal" id="camera-signal"><i class="dot"></i><span>等待相机</span></span>
+        <span class="signal" id="model-signal"><i class="dot"></i><span>等待 LingBot</span></span>
+      </div>
+    </header>
+
+    <section class="instrument-bar" aria-label="设备与性能">
+      <div class="device"><strong id="device-name">RealSense 深度相机</strong><span id="model-device">正在连接本地服务</span></div>
+      <div class="metrics">
+        <div class="mode-control"><label for="depth-mode">成像模式</label><select id="depth-mode" aria-describedby="mode-help mode-message" disabled title="模型输入规模：快速预览 256 tokens，均衡 512 tokens，细节 1200 tokens。官方默认范围为 1200–3600 tokens。"><option value="" disabled selected>读取中…</option><option value="256">快速预览</option><option value="512">均衡</option><option value="1200">细节</option></select></div>
+        <div class="metric">相机 <output id="camera-fps">—</output></div>
+        <div class="metric">AI 更新 <output id="model-fps">—</output></div>
+        <div class="metric">AI 推理 <output id="model-latency">—</output></div>
+        <div class="metric" id="gpu-metric" title="整台 Mac 的 GPU 利用率，包含其他应用的负载，每秒采样"><span>GPU 占用（整机）</span><output id="gpu-utilization">—</output></div>
+      </div>
+    </section>
+    <div class="mode-help"><span id="mode-help">快速模式降低细节；AI 异步更新</span><span class="mode-message" id="mode-message" role="status" aria-live="polite"></span></div>
+    <div class="notice" id="notice" role="status">正在连接相机与深度模型…</div>
+
+    <section class="streams" aria-label="实时画面">
+      <figure class="stream">
+        <div class="stream-heading"><h2>彩色画面</h2><span class="stream-kind">RGB</span></div>
+        <div class="image-stage" id="stage-rgb" tabindex="0" role="button" aria-label="彩色画面，点击测距，回车测量中心点">
+          <img id="image-rgb" alt="RealSense 实时彩色画面">
+          <div class="placeholder"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="4" y="7" width="24" height="18" rx="3" stroke="currentColor"/><circle cx="16" cy="16" r="5" stroke="currentColor"/></svg><strong id="empty-rgb-title">等待相机画面</strong><span id="empty-rgb-detail">相机连接成功后自动显示</span></div>
+          <span class="frame-tag">彩色</span><span class="crosshair" aria-hidden="true"></span>
+          <span class="frame-fps" id="frame-fps-rgb" title="RealSense 彩色采集帧率">采集 0.0 FPS</span>
+        </div>
+        <figcaption><span>点击画面读取距离</span><span class="frame-age" id="age-rgb">尚无帧</span></figcaption>
+      </figure>
+      <figure class="stream">
+        <div class="stream-heading"><h2>原始深度</h2><span class="stream-kind">RealSense</span></div>
+        <div class="image-stage" id="stage-raw" tabindex="0" role="button" aria-label="原始深度，点击测距，回车测量中心点">
+          <img id="image-raw" alt="RealSense 原始深度伪彩图">
+          <div class="placeholder"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="m5 18 6-6 6 6 5-9 5 14M5 25h22" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></svg><strong id="empty-raw-title">等待深度画面</strong><span id="empty-raw-detail">黑色区域表示没有有效深度</span></div>
+          <span class="frame-tag">原始</span><span class="crosshair" aria-hidden="true"></span>
+          <span class="frame-fps" id="frame-fps-raw" title="RealSense 对齐深度采集帧率">采集 0.0 FPS</span>
+        </div>
+        <figcaption><span>传感器测量结果</span><span class="frame-age" id="age-raw">尚无帧</span></figcaption>
+      </figure>
+      <figure class="stream">
+        <div class="stream-heading"><h2>灵波修复深度</h2><span class="stream-kind">LingBot-Depth</span></div>
+        <div class="image-stage" id="stage-ai" tabindex="0" role="button" aria-label="灵波修复深度，点击测距，回车测量中心点">
+          <img id="image-ai" alt="LingBot-Depth 修复深度伪彩图">
+          <div class="placeholder"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M6 11h20M6 16h20M6 21h20M11 6v20M16 6v20M21 6v20" stroke="currentColor" stroke-linecap="round"/></svg><strong id="empty-ai-title">等待模型输出</strong><span id="empty-ai-detail">收到 RGB 与深度后开始修复</span></div>
+          <span class="frame-tag">AI · 异步更新</span><span class="crosshair" aria-hidden="true"></span>
+          <span class="frame-fps" id="frame-fps-ai" title="LingBot 深度推理结果更新帧率">推理 0.0 FPS</span>
+        </div>
+        <figcaption><span>模型估计结果</span><span class="frame-age" id="age-ai">尚无结果</span></figcaption>
+      </figure>
+    </section>
+
+    <div class="legend-row">
+      <p class="async-note"><strong>AI 画面异步更新。</strong>与当前彩色、原始深度可能来自不同帧；移动相机或物体时，请结合更新时间判断。</p>
+      <div class="scale" aria-label="深度颜色范围"><div class="color-scale"></div><div class="scale-label"><span id="depth-min">0.2 m · 近</span><span>深度颜色</span><span id="depth-max">4.0 m · 远</span></div></div>
+    </div>
+
+    <section class="measure" aria-label="像素测距">
+      <div class="measure-intro"><h3 id="measure-title">中心点距离</h3><p class="measure-hint">点击任意画面测距，数值来自最新深度帧。</p></div>
+      <div class="measurement"><div class="measurement-label">RealSense 原始</div><output id="distance-raw">—</output><small>m</small></div>
+      <div class="measurement ai"><div class="measurement-label">LingBot 修复</div><output id="distance-ai">—</output><small>m</small></div>
+      <p class="measure-message" id="measure-message" aria-live="polite">等待有效深度数据。</p>
+    </section>
+    <footer><span>本地实时预览 · 黑色表示无有效深度</span><button class="reset" id="reset-point" type="button">回到中心点</button></footer>
+  </main>
+  <script>
+    'use strict';
+    const $ = (id) => document.getElementById(id);
+    const frameKinds = ['rgb', 'raw', 'ai'];
+    const frameUrls = {};
+    const streamVersions = {rgb:0, raw:0, ai:0};
+    const streamAllowed = {rgb:false, raw:false, ai:false};
+    const frameMetadata = {};
+    let statusReceivedAt = 0;
+    let latestStatus = null;
+    let selectedPoint = null;
+    let pixelRequestId = 0;
+    let pixelController = null;
+    let measuring = false;
+    let configSaving = false;
+    let configRevision = 0;
+    let confirmedTokens = null;
+    const modeNames = { 256:'快速预览', 512:'均衡', 1200:'细节' };
+    const numeric = (value) => typeof value === 'number' && Number.isFinite(value);
+    const distance = (value) => numeric(value) && value > 0 ? value.toFixed(3) : '—';
+    const rate = (value) => numeric(value) ? value.toFixed(1) + ' fps' : '—';
+    const age = (value) => numeric(value) ? (value < 1 ? Math.round(value * 1000) + ' ms 前' : value.toFixed(1) + ' s 前') : '尚无帧';
+    function setSignal(id, label, state) {
+      const el = $(id);
+      el.className = 'signal' + (state ? ' ' + state : '');
+      el.querySelector('span').textContent = label;
+    }
+    function placeholder(kind, title, detail) {
+      $('empty-' + kind + '-title').textContent = title;
+      $('empty-' + kind + '-detail').textContent = detail;
+    }
+    function showNotice(message, error = false) {
+      const el = $('notice');
+      el.hidden = !message;
+      el.className = 'notice' + (error ? ' error' : '');
+      el.textContent = message;
+    }
+    function isActive(state) { return ['running', 'streaming', 'ready', 'connected', 'active'].includes(state); }
+    function showDistances(raw, ai) {
+      $('distance-raw').textContent = distance(raw);
+      $('distance-ai').textContent = distance(ai);
+    }
+    function streamIsLive(kind) {
+      if (!latestStatus || !statusReceivedAt) return false;
+      const elapsed = (performance.now() - statusReceivedAt) / 1000;
+      const camera = latestStatus.camera || {};
+      if (elapsed > 4 || camera.is_live !== true || !numeric(camera.last_frame_age_s) || camera.last_frame_age_s + elapsed >= 3) return false;
+      if (kind !== 'ai') return true;
+      const model = latestStatus.model || {};
+      return model.is_live === true && numeric(model.source_age_s) && model.source_age_s + elapsed < (model.stale_after_s || 3);
+    }
+    function hideStream(kind) {
+      streamVersions[kind]++;
+      $('stage-' + kind).classList.remove('has-frame');
+      $('image-' + kind).removeAttribute('src');
+      if (frameUrls[kind]) { URL.revokeObjectURL(frameUrls[kind]); delete frameUrls[kind]; }
+      renderFrameFps();
+    }
+    function renderFrameFps() {
+      for (const kind of frameKinds) {
+        const source = kind === 'ai' ? latestStatus?.model : latestStatus?.camera;
+        const visible = streamIsLive(kind) && $('stage-' + kind).classList.contains('has-frame');
+        const value = visible && numeric(source?.fps) ? Math.max(0, source.fps) : 0;
+        $('frame-fps-' + kind).textContent = (kind === 'ai' ? '推理 ' : '采集 ') + value.toFixed(1) + ' FPS';
+      }
+    }
+    function renderGpuUsage() {
+      const gpu = latestStatus?.gpu;
+      const elapsed = statusReceivedAt ? (performance.now() - statusReceivedAt) / 1000 : Infinity;
+      const fresh = gpu?.state === 'ready' && numeric(gpu.age_s) && gpu.age_s + elapsed < 3;
+      const valid = fresh && numeric(gpu.utilization_percent) && gpu.utilization_percent >= 0 && gpu.utilization_percent <= 100;
+      $('gpu-utilization').textContent = valid ? gpu.utilization_percent.toFixed(0) + '%' : gpu?.state === 'unavailable' ? '不可用' : '—';
+      $('gpu-metric').title = valid ? (gpu.name || 'GPU') + ' 整机利用率，包含其他应用的负载，每秒采样' : gpu?.error || '等待新的 GPU 利用率数据';
+    }
+    function syncStreamAvailability() {
+      for (const kind of frameKinds) {
+        const allowed = streamIsLive(kind);
+        if (!allowed && streamAllowed[kind]) hideStream(kind);
+        streamAllowed[kind] = allowed;
+      }
+      renderFrameFps();
+      renderGpuUsage();
+    }
+    function renderFrameMetadata() {
+      for (const kind of frameKinds) {
+        const meta = frameMetadata[kind];
+        if (!meta) { $('age-' + kind).textContent = kind === 'ai' ? '尚无结果' : '尚无帧'; continue; }
+        const clock = new Date(meta.capturedAt * 1000).toLocaleTimeString('zh-CN', {hour12:false}) + '.' + String(Math.floor(meta.capturedAt * 1000) % 1000).padStart(3, '0');
+        const seconds = Math.max(0, Date.now() / 1000 - meta.capturedAt);
+        $('age-' + kind).textContent = (streamIsLive(kind) ? '帧 ' : '上一帧 ') + meta.id + ' · ' + clock + '\n' + (kind === 'ai' ? '输入 ' : '采集 ') + age(seconds);
+      }
+    }
+    function clearMeasurements() {
+      pixelRequestId++;
+      if (pixelController) pixelController.abort();
+      measuring = false;
+      showDistances(null, null);
+    }
+    function updateStatus(status, syncMode = false, received = true) {
+      latestStatus = status;
+      if (received) statusReceivedAt = performance.now();
+      syncStreamAvailability();
+      const camera = status.camera || {};
+      const model = status.model || {};
+      if (syncMode && !configSaving && modeNames[model.tokens]) {
+        confirmedTokens = Number(model.tokens);
+        $('depth-mode').value = String(confirmedTokens);
+        $('depth-mode').disabled = false;
+      }
+      const cameraGood = streamIsLive('rgb');
+      const modelGood = streamIsLive('ai');
+      setSignal('camera-signal', cameraGood ? '相机实时采集中' : camera.frames > 0 ? '画面已中断' : '等待相机', cameraGood ? 'good' : camera.frames > 0 || camera.error ? 'error' : '');
+      setSignal('model-signal', modelGood ? 'LingBot 实时更新中' : !cameraGood && model.frames > 0 ? 'AI 等待相机重连' : model.error ? 'LingBot 未就绪' : model.state === 'processing' ? 'LingBot 正在推理' : model.state === 'waiting_depth' ? '等待有效深度' : ['loading', 'starting', 'initializing'].includes(model.state) ? 'LingBot 加载中' : '等待新 AI 结果', modelGood ? 'good' : model.error ? 'error' : '');
+      $('device-name').textContent = camera.name || 'RealSense 深度相机';
+      $('model-device').textContent = model.device ? 'AI 设备：' + model.device : '本地处理';
+      $('camera-fps').textContent = rate(cameraGood ? camera.fps : 0);
+      $('model-fps').textContent = rate(modelGood ? model.fps : 0);
+      $('model-latency').textContent = numeric(model.inference_ms) ? (model.inference_ms >= 1000 ? (model.inference_ms / 1000).toFixed(2) + ' s' : Math.round(model.inference_ms) + ' ms') : '—';
+      renderFrameMetadata();
+      if (Array.isArray(status.depth_range_m) && status.depth_range_m.length === 2) {
+        $('depth-min').textContent = Number(status.depth_range_m[0]).toFixed(1) + ' m · 近';
+        $('depth-max').textContent = Number(status.depth_range_m[1]).toFixed(1) + ' m · 远';
+      }
+      const permissionError = /permission|power state|access|sudo|权限|授权|administrator|not permitted|no device connected/i.test(String(camera.error || ''));
+      if (camera.state === 'reconnecting') {
+        showNotice(camera.error || '采集已中断，正在自动重新连接相机。');
+        placeholder('rgb', '正在重新连接相机', '新帧到达后自动恢复');
+        placeholder('raw', '正在重新连接相机', '新帧到达后自动恢复');
+        placeholder('ai', '等待相机重连', '恢复采集后自动生成新结果');
+      } else if (camera.error) {
+        const driverCrash = /崩溃|SIGSEGV|SIGABRT|segmentation/i.test(String(camera.error));
+        const instruction = driverCrash ? '采集进程已退出，需修复驱动后重新启动。' : permissionError ? '请打开项目中的 start-camera.command，在 macOS 提示中完成管理员授权。' : '请检查 USB 连接并重新运行 start-camera.command。';
+        showNotice('相机暂不可用。' + instruction + ' 详情：' + camera.error, true);
+        placeholder('rgb', '画面已中断 / 正在重连', instruction);
+        placeholder('raw', '深度已中断 / 正在重连', instruction);
+        placeholder('ai', '等待相机重连', '已隐藏过期 AI 画面，恢复采集后自动更新');
+      } else if (model.error) {
+        showNotice('LingBot 尚未输出修复深度：' + model.error, true);
+        placeholder('ai', 'LingBot 暂不可用', String(model.error));
+      } else if (!cameraGood) {
+        showNotice(camera.frames > 0 ? '实时画面已中断，正在等待相机重连。已隐藏上一帧和过期测距。' : '等待 RealSense 画面。若尚未启动相机，请打开项目中的 start-camera.command。');
+        placeholder('rgb', camera.frames > 0 ? '画面已中断 / 正在重连' : '等待相机画面', '新帧到达后自动显示');
+        placeholder('raw', camera.frames > 0 ? '深度已中断 / 正在重连' : '等待深度画面', '新帧到达后自动显示');
+        placeholder('ai', '等待相机画面', '恢复采集后重新生成修复深度');
+      } else if (model.state === 'waiting_depth') {
+        showNotice('当前帧没有有效深度，LingBot 正在等待深度恢复。已有 AI 结果的更新时间显示在画面下方。');
+        placeholder('ai', '等待有效深度', '当前帧没有有效深度，恢复后自动继续修复');
+      } else if (!modelGood) {
+        const loading = ['loading', 'starting', 'initializing'].includes(model.state);
+        const processing = model.state === 'processing';
+        showNotice(loading ? 'LingBot 正在加载。相机画面会继续更新，首个修复结果完成后自动显示。' : processing ? 'LingBot 正在生成首帧修复深度，相机画面会继续更新。' : '相机已就绪，正在等待首个 LingBot 修复结果。');
+        placeholder('ai', model.frames > 0 ? '等待新的修复结果' : processing ? '正在生成首帧修复深度' : '等待首个修复结果', loading ? '模型正在加载，请稍候' : '已隐藏过期画面，新结果到达后自动显示');
+      } else if (numeric(model.input_valid_fraction) && model.input_valid_fraction < 0.05) {
+        showNotice('当前原始深度有效区域仅 ' + (model.input_valid_fraction * 100).toFixed(1) + '%。请让相机正对 0.3 米以外的物体，并检查双目镜头是否遮挡；AI 距离暂只用于预览。');
+      } else {
+        showNotice('');
+      }
+      if (!cameraGood) {
+        clearMeasurements();
+        $('measure-message').textContent = '画面已中断，暂无实时测距。';
+      } else if (!selectedPoint) {
+        const center = status.center_depth_m || {};
+        showDistances(center.raw, modelGood ? center.ai : null);
+        $('measure-message').textContent = numeric(center.raw) || numeric(center.ai) ? '当前中心点；AI 距离对应其最近一次结果，两路时间可能不同。' : '等待有效深度数据。';
+      }
+    }
+    async function fetchWithTimeout(url, options = {}, timeout = 5000, consume = null) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const response = await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' });
+        return consume ? await consume(response) : response;
+      }
+      finally { clearTimeout(timer); }
+    }
+    async function statusLoop() {
+      const requestRevision = configRevision;
+      try {
+        const status = await fetchWithTimeout('/api/status', {}, 5000, async (response) => {
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return response.json();
+        });
+        updateStatus(status, requestRevision === configRevision);
+        if (selectedPoint && !measuring && streamIsLive('rgb')) readPixel(selectedPoint);
+      } catch (error) {
+        latestStatus = null;
+        statusReceivedAt = 0;
+        syncStreamAvailability();
+        frameKinds.forEach((kind) => placeholder(kind, '预览连接已中断', '正在重新连接本地服务，已隐藏旧画面'));
+        clearMeasurements();
+        $('depth-mode').disabled = true;
+        setSignal('camera-signal', '服务未连接', 'error');
+        setSignal('model-signal', '服务未连接', 'error');
+        showNotice('无法连接本地服务。请打开项目中的 start.command，页面会自动重试。', true);
+        $('camera-fps').textContent = '—';
+        $('model-fps').textContent = '—';
+        $('model-latency').textContent = '—';
+        $('age-rgb').textContent = '服务未连接';
+        $('age-raw').textContent = '服务未连接';
+        $('age-ai').textContent = '服务未连接';
+        showDistances(null, null);
+        $('measure-message').textContent = '服务未连接，暂无可用测距。';
+      } finally { setTimeout(statusLoop, document.hidden ? 2000 : 1000); }
+    }
+    async function frameLoop(kind) {
+      const started = performance.now();
+      const generation = streamVersions[kind];
+      let pendingUrl = null;
+      let succeeded = false;
+      try {
+        if (!streamIsLive(kind)) return;
+        const packet = await fetchWithTimeout('/frame/' + kind + '.jpg', {}, 5000, async (response) => {
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return {blob:await response.blob(), id:response.headers.get('X-Frame-Id'), capturedAt:Number(response.headers.get('X-Captured-At'))};
+        });
+        const maxAge = kind === 'ai' ? (latestStatus?.model?.stale_after_s || 3) : 3;
+        if (!packet.id || !packet.capturedAt || !numeric(packet.capturedAt) || Date.now() / 1000 - packet.capturedAt >= maxAge) throw new Error('Stale frame');
+        if (!packet.blob.type.startsWith('image/')) throw new Error('Invalid image');
+        pendingUrl = URL.createObjectURL(packet.blob);
+        const preload = new Image();
+        preload.src = pendingUrl;
+        await preload.decode();
+        // A status error can arrive while fetch/decode is pending. Never allow
+        // that older response to restore an image after its stream was hidden.
+        if (generation !== streamVersions[kind] || !streamIsLive(kind) || Date.now() / 1000 - packet.capturedAt >= maxAge) return;
+        $('image-' + kind).src = pendingUrl;
+        const oldUrl = frameUrls[kind];
+        frameUrls[kind] = pendingUrl;
+        frameMetadata[kind] = {id:packet.id, capturedAt:packet.capturedAt};
+        pendingUrl = null;
+        $('stage-' + kind).classList.add('has-frame');
+        renderFrameFps();
+        succeeded = true;
+        if (oldUrl) URL.revokeObjectURL(oldUrl);
+        positionCrosshair(kind);
+        renderFrameMetadata();
+      } catch (error) {
+        hideStream(kind);
+        placeholder(kind, kind === 'ai' ? '等待新的修复结果' : '画面已中断 / 正在重连', '只显示新采集的画面，恢复后自动更新');
+      } finally {
+        if (pendingUrl) URL.revokeObjectURL(pendingUrl);
+        const interval = document.hidden || !succeeded ? 1000 : kind === 'ai' ? 500 : 1000 / 15;
+        setTimeout(() => frameLoop(kind), Math.max(0, interval - (performance.now() - started)));
+      }
+    }
+    // Use the page clock as a second check when a status request or response
+    // body stalls. A stopped status loop must not leave a green frozen preview.
+    setInterval(() => {
+      syncStreamAvailability();
+      renderFrameMetadata();
+      if (latestStatus && !streamIsLive('rgb')) {
+        frameKinds.forEach((kind) => placeholder(kind, '画面已中断 / 正在重连', '已隐藏旧画面，等待新帧'));
+        setSignal('camera-signal', '画面已中断', 'error');
+        setSignal('model-signal', 'AI 等待相机重连', '');
+        $('camera-fps').textContent = rate(0);
+        $('model-fps').textContent = rate(0);
+        clearMeasurements();
+        $('measure-message').textContent = '画面已中断，暂无实时测距。';
+      } else if (latestStatus && !streamIsLive('ai')) {
+        if (latestStatus.model?.frames > 0) setSignal('model-signal', '等待新的 AI 结果', '');
+        $('model-fps').textContent = rate(0);
+        $('distance-ai').textContent = '—';
+      }
+    }, 250);
+    function contentRect(kind) {
+      const stage = $('stage-' + kind);
+      const image = $('image-' + kind);
+      if (!stage.classList.contains('has-frame') || !image.naturalWidth) return null;
+      const rect = stage.getBoundingClientRect();
+      const scale = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight);
+      const width = image.naturalWidth * scale;
+      const height = image.naturalHeight * scale;
+      return { left:rect.left + (rect.width - width) / 2, top:rect.top + (rect.height - height) / 2, width, height, offsetX:(rect.width - width) / 2, offsetY:(rect.height - height) / 2 };
+    }
+    function positionCrosshair(kind) {
+      const marker = $('stage-' + kind).querySelector('.crosshair');
+      const rect = contentRect(kind);
+      const point = selectedPoint || { x:0.5, y:0.5 };
+      if (!rect) { marker.classList.remove('visible'); return; }
+      marker.style.left = (rect.offsetX + point.x * rect.width) + 'px';
+      marker.style.top = (rect.offsetY + point.y * rect.height) + 'px';
+      marker.classList.add('visible');
+    }
+    async function readPixel(point) {
+      const requestId = ++pixelRequestId;
+      if (pixelController) pixelController.abort();
+      pixelController = new AbortController();
+      const controller = pixelController;
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      measuring = true;
+      try {
+        const response = await fetch('/api/pixel?x=' + point.x.toFixed(6) + '&y=' + point.y.toFixed(6), { cache:'no-store', signal:controller.signal });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+        if (requestId !== pixelRequestId || !selectedPoint || !streamIsLive('rgb')) return;
+        showDistances(data.raw_m, streamIsLive('ai') ? data.ai_m : null);
+        $('measure-message').textContent = (numeric(data.raw_m) && data.raw_m > 0 || numeric(data.ai_m) && data.ai_m > 0 ? '读取最新深度帧。' : '此位置暂无有效深度。') + (numeric(data.ai_age_s) ? 'AI 输入采集于 ' + age(data.ai_age_s) + '，与原始深度可能来自不同帧。' : '等待 AI 结果。');
+      } catch (error) {
+        if (requestId !== pixelRequestId) return;
+        showDistances(null, null);
+        $('measure-message').textContent = '暂时无法读取此位置的深度，将自动重试。';
+      } finally {
+        clearTimeout(timeout);
+        if (requestId === pixelRequestId) measuring = false;
+      }
+    }
+    function selectPoint(point) {
+      selectedPoint = point;
+      $('measure-title').textContent = '选点距离 · ' + Math.round(point.x * 100) + '% / ' + Math.round(point.y * 100) + '%';
+      frameKinds.forEach(positionCrosshair);
+      $('measure-message').textContent = '正在读取所选位置…';
+      readPixel(point);
+    }
+    for (const kind of frameKinds) {
+      const stage = $('stage-' + kind);
+      stage.addEventListener('click', (event) => {
+        const rect = contentRect(kind);
+        if (!rect) return;
+        const x = (event.clientX - rect.left) / rect.width;
+        const y = (event.clientY - rect.top) / rect.height;
+        if (x < 0 || x > 1 || y < 0 || y > 1) return;
+        selectPoint({ x, y });
+      });
+      stage.addEventListener('keydown', (event) => {
+        if ((event.key === 'Enter' || event.key === ' ') && contentRect(kind)) { event.preventDefault(); selectPoint({ x:0.5, y:0.5 }); }
+      });
+      new ResizeObserver(() => positionCrosshair(kind)).observe(stage);
+    }
+    $('reset-point').addEventListener('click', () => {
+      selectedPoint = null;
+      pixelRequestId++;
+      measuring = false;
+      if (pixelController) pixelController.abort();
+      $('measure-title').textContent = '中心点距离';
+      frameKinds.forEach(positionCrosshair);
+      if (latestStatus) updateStatus(latestStatus, false, false);
+      else { showDistances(null, null); $('measure-message').textContent = '等待有效深度数据。'; }
+    });
+    $('depth-mode').addEventListener('change', async (event) => {
+      if (configSaving) return;
+      const tokens = Number(event.target.value);
+      if (!modeNames[tokens]) return;
+      configSaving = true;
+      configRevision++;
+      $('depth-mode').disabled = true;
+      $('mode-message').className = 'mode-message';
+      $('mode-message').textContent = '正在切换成像模式…';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      try {
+        const response = await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({tokens}), signal:controller.signal });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || '服务返回 HTTP ' + response.status);
+        if (!modeNames[result.tokens]) throw new Error('服务返回了未知成像模式');
+        confirmedTokens = Number(result.tokens);
+        $('depth-mode').value = String(confirmedTokens);
+        $('mode-message').textContent = '已选择' + modeNames[confirmedTokens] + '；当前推理完成后，下一帧生效。';
+      } catch (error) {
+        $('depth-mode').value = confirmedTokens === null ? '' : String(confirmedTokens);
+        $('mode-message').className = 'mode-message error';
+        $('mode-message').textContent = error.name === 'AbortError' ? '切换请求超时，请稍后重试；当前模式将自动重新确认。' : '模式切换失败：' + error.message + '。请重试。';
+      } finally {
+        clearTimeout(timeout);
+        configSaving = false;
+        configRevision++;
+        $('depth-mode').disabled = !latestStatus || confirmedTokens === null;
+      }
+    });
+    statusLoop();
+    frameKinds.forEach(frameLoop);
+  </script>
+</body>
+</html>

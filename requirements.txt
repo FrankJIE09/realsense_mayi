@@ -1,0 +1,14 @@
+# Run from the project root. macOS uses our locally built, bundled SDK wheel.
+--find-links ./build/wheels
+pyrealsense2-macosx==2.59.2; sys_platform == 'darwin'
+pyrealsense2==2.59.2.11152; sys_platform != 'darwin'
+numpy==1.26.4
+opencv-python-headless==4.11.0.86
+torch==2.6.0
+torchvision==0.21.0
+huggingface_hub>=0.27,<3
+scipy>=1.13,<1.18
+matplotlib>=3.9
+trimesh>=4
+pillow>=10
+click>=8

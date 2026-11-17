@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+runtime/
+models/
+output/
+build/
+/vendor/librealsense/
+/vendor/libusb/
+.env
+.env.*
+.DS_Store

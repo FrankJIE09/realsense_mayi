@@ -1,0 +1,3 @@
+[submodule "vendor/lingbot-depth"]
+	path = vendor/lingbot-depth
+	url = https://github.com/Robbyant/lingbot-depth.git

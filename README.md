@@ -3,20 +3,75 @@
 本地采集 RealSense D435i 的 RGB 和深度，使用蚂蚁灵波官方 **LingBot-Depth v0.5** 修复深度。
 浏览器同时显示彩色、原始深度、模型修复深度，点击画面可查看该位置的米制距离。
 
+## 新手先看：从安装到看到画面
+
+已经安装好的电脑，从图中的「连接相机」开始即可。第一次使用，请先完成[首次安装](#首次安装只做一次)。
+
+```mermaid
+flowchart TD
+    A["准备 Apple Silicon Mac 和 RealSense D435i"] --> B{"第一次在这台电脑使用？"}
+    B -->|是| C["完成下方的首次安装<br/>获取代码、编译驱动、下载模型"]
+    B -->|已安装| D["连接相机<br/>使用支持 USB 3.0 的数据线"]
+    C --> D
+    D --> E["先双击 start.command<br/>启动网页服务和 AI 模型"]
+    E --> F["再双击 start-camera.command<br/>输入 Mac 管理员登录密码"]
+    F --> G["保持两个终端窗口打开<br/>访问 http://127.0.0.1:8765"]
+    G --> H{"能看到画面<br/>而且帧序号在变化？"}
+    H -->|否| I["查看下方的常见问题<br/>检查终端提示和 USB 连接"]
+    I --> G
+    H -->|是| J["开始使用<br/>切换成像模式，点击画面测距"]
+    J --> K["结束使用<br/>在两个终端窗口分别按 Ctrl-C"]
+```
+
+## 日常启动：按这个顺序做
+
+1. **连接相机。** 使用 USB 3.0 数据线连接 D435i，把相机对准约 0.3 米以外的物体，保持双目镜头无遮挡。
+2. **先打开网页服务。** 在项目文件夹里双击 `start.command`。它会打开第一个终端窗口，并尝试自动打开浏览器；保留这个终端窗口。
+3. **再打开相机采集。** 双击 `start-camera.command`。在第二个终端窗口出现 `Password:` 时，输入 **Mac 管理员登录密码**，然后按回车。输入时不会显示字符或星号，这是正常的。
+4. **查看实时画面。** 浏览器打开 <http://127.0.0.1:8765>。先等待相机连接，再等待 AI 首帧完成；页面应显示彩色、原始深度和灵波修复深度。画面下方的帧序号和采集时间持续变化，才表示正在更新。
+5. **选择效果。** 先用「快速预览」；想看更多细节，再试「均衡」或「细节」。点击画面可读距离，右上角可看各路 FPS，顶部可看整机 GPU 占用。
+
+两个脚本都要运行，顺序是 **`start.command` → `start-camera.command`**。也可以在项目目录的终端中依次执行 `./start.command` 和 `./start-camera.command`，每个脚本使用一个终端窗口。
+
+**如何停止：** 先在相机采集终端按 **Ctrl-C**，再在网页服务终端按 **Ctrl-C**。只关闭浏览器标签页不会停止相机和 AI。
+
+只有 USB 采集进程（`camera_runner.py` 及其子进程 `camera_capture.py`）需要管理员身份；模型与网页服务以普通用户身份运行。
+采集进程仍在运行时，USB 超时或拔插会自动重连；终端关闭或服务退出后需重新启动。重复运行采集脚本会被进程锁阻止，避免争用相机。
+服务仅监听 `127.0.0.1`；画面在本机内存中传递，默认不录制、不上传。
+
+## 程序里面发生了什么
+
+相机同时提供彩色和距离信息。程序把二者对齐后，一路直接显示，另一路交给本机 AI 修复深度；相机持续取新画面，AI 每次处理最新的一帧。
+
+```mermaid
+flowchart TD
+    A["RealSense D435i<br/>拍摄彩色图，测量原始深度"] --> B["对齐彩色与深度的位置<br/>把距离统一换算成米"]
+    B --> C["直接生成彩色和原始深度预览"]
+    B --> D["取最新的一帧<br/>不积压等待处理的画面"]
+    D --> E["本机 LingBot-Depth 模型<br/>优先使用 Mac 的 GPU 修复深度"]
+    E --> F["生成 AI 修复深度预览"]
+    C --> G["浏览器展示三路画面<br/>显示帧率、采集时间，支持点击测距"]
+    F --> G
+    H["macOS 每秒提供整机 GPU 占用"] --> G
+```
+
+彩色和原始深度采集通常约 **30 FPS**，本机 AI 快速模式实测约 **2–4 FPS**，因此 AI 画面会稍晚更新。它们都在本机处理，速度以页面显示为准。
+
 每幅画面右上角显示帧率：彩色和原始深度为采集 FPS，AI 为推理结果更新 FPS；画面中断时归零。性能栏还显示 Apple M4 的整机 GPU 利用率，每秒从 macOS IORegistry 采样一次，无需管理员权限，包含其他应用的 GPU 负载。指标缺失或过期时显示不可用，不使用估算值。
 
 LingBot-Depth 的代码与本项目使用的 v0.5 权重均标注 Apache 2.0。推理在本机 M4 / Metal 上运行，不调用在线模型 API，不消耗 API 计费 token。配置中的 tokens 是图像分块数量，用于控制细节和速度；首次安装联网下载权重，运行时使用本地文件。
 
-## 启动
+## 遇到问题怎么办
 
-1. 双击 `start.command`，或在本目录执行 `.venv/bin/python -u app.py`。
-2. 打开 <http://127.0.0.1:8765>。
-3. macOS 若显示相机权限错误，双击 `start-camera.command`，在终端输入本机管理员密码。输入密码时不会显示字符。
-
-只有 USB 采集进程（`camera_runner.py` 及其子进程 `camera_capture.py`）需要管理员身份；模型与网页服务以普通用户身份运行。
-关闭采集终端（或 Ctrl-C）停止相机；关闭预览服务终端（或 Ctrl-C）停止整个程序。若采集进程由系统授权弹窗启动，关闭预览服务后它会在下一帧因连接关闭而退出。
-采集进程仍在运行时，USB 超时或拔插会自动重连；终端关闭或服务退出后需重新启动。重复运行采集脚本会被进程锁阻止，避免争用相机。
-服务仅监听 `127.0.0.1`；画面在本机内存中传递，默认不录制、不上传。
+| 你看到的情况 | 先这样处理 |
+| --- | --- |
+| 网页打不开 | 先运行 `start.command`，确认对应终端没有退出，再访问上面的本机地址。 |
+| 网页打开了，一直「等待相机」 | 再运行 `start-camera.command`，完成密码验证；检查 USB 数据线和相机连接。 |
+| 输入密码时屏幕没有反应 | 密码不会显示出来；正常输入完整密码后按回车，不要把密码发给其他人。 |
+| 原始深度大片黑色 | 黑色表示没有测到有效距离。把物体放在约 0.3 米以外，检查镜头遮挡，换一个有纹理、不过度反光的目标。 |
+| AI 画面比彩色画面慢 | AI 是异步计算的。选「快速预览」，观察 AI 的 FPS 和输入时间。 |
+| 显示「画面已中断／正在重连」 | 保持两个终端打开，等待自动重连；若终端已退出，重新运行对应脚本。持续失败时查看终端报错和[驱动构建说明](docs/realsense-macos-build.md)。 |
+| 关闭网页后 GPU 仍有占用 | 程序仍可能在后台运行；在两个终端分别按 Ctrl-C。页面里的 GPU 占用也包含其他应用。 |
 
 ## 实际速度与限制
 
@@ -45,7 +100,7 @@ PyTorch 2.6 尚不支持 MPS 的抗锯齿双线性缩放，本项目启用 `PYTO
 
 深度通过 SDK `rs.align(rs.stream.color)` 对齐到彩色画面，原始 Z16 值乘设备实际 `depth_scale` 转米。相机内参来自彩色流，按宽高归一化后传给模型。黑色表示无效深度；所有深度图使用相同 0.2–4.0 米 TURBO 色标，超出范围的有效值只在显示时截到色标端点。
 
-## 文件与复现
+## 文件说明
 
 - `app.py`：本机 HTTP 服务、画面接收、异步推理、测距。
 - `camera_capture.py`：USB 采集，仅经权限为 0600 的 Unix socket 发送 RGB-D 数据。
@@ -56,10 +111,15 @@ PyTorch 2.6 尚不支持 MPS 的抗锯齿双线性缩放，本项目启用 `PYTO
 - `vendor/lingbot-depth`：官方仓库子模块，固定提交 `f3a237e434ae987bc38281476d6cfb5df3e4d739`；版权和许可见其 LICENSE / LEGAL.md。
 - `output/official-example-*.npz` 与 JSON：本地生成的官方样例输入、真实预测和计时，**不是相机实拍**，也不提交到 Git。
 
-当前 `.venv` 使用 Python 3.12。新机器请使用 `git clone --recurse-submodules` 获取项目；已普通克隆的目录可按下面第一条命令补齐子模块。macOS 15+ / Apple Silicon 安装顺序：
+## 首次安装（只做一次）
+
+需要 **Apple Silicon Mac、macOS 15 或更新版本、Python 3.12、Xcode Command Line Tools**。可以用 `xcode-select --install` 安装苹果命令行工具；执行 `python3.12 --version` 应能显示 Python 3.12 的版本号。首次安装需要联网，会编译相机驱动并下载约 1.28 GB 的模型。
+
+打开「终端」，进入你准备存放项目的位置，按顺序运行下面的命令。**使用 Git 克隆，不要只下载 GitHub 的 ZIP**，因为项目还依赖 LingBot 子模块。
 
 ```bash
-git submodule update --init --recursive
+git clone --recurse-submodules https://github.com/FrankJIE09/realsense_mayi.git
+cd realsense_mayi
 python3.12 -m venv .venv
 # 编译 SDK wheel；仓库不包含平台相关二进制产物。
 bash scripts/build-realsense-macos.sh
@@ -67,10 +127,15 @@ bash scripts/build-realsense-macos.sh
 .venv/bin/python -c "from huggingface_hub import hf_hub_download; hf_hub_download('robbyant/lingbot-depth-pretrain-vitl-14-v0.5', 'model.pt', local_dir='models/lingbot-depth-v0.5')"
 ```
 
-本机已经完成上述步骤；现有 `build/wheels` 中有匹配 wheel 时可跳过编译。不要直接安装官方 requirements：其 xFormers/CUDA 依赖不适用于此 Mac。
+如果已经克隆项目但缺少 `vendor/lingbot-depth` 中的文件，进入项目目录运行 `git submodule update --init --recursive`，然后从创建虚拟环境开始安装。现有 `build/wheels` 中有匹配 wheel 时可跳过编译。不要直接安装官方 requirements：其 xFormers/CUDA 依赖不适用于此 Mac。
+
+安装完成后，回到上面的[日常启动步骤](#日常启动按这个顺序做)；以后使用不必重复安装。
+
+## 离线验证与开发检查
 
 ```bash
 # 只预览相机，不加载模型
+# 此命令运行后，另开一个终端执行 ./start-camera.command 启动相机
 .venv/bin/python app.py --no-ai
 
 # 生成官方样例输入，再离线验证
